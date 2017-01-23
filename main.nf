@@ -89,8 +89,8 @@ Channel.fromPath(params.query_fastas).splitFasta( by: 4, file: true).set{split_q
 process LastAlign {
   publishDir "outputs/stages/alignments"
 
-  memory {8.GB * task.attempt}
-  cpus {Math.floor(8 / task.attempt)}
+  cpus 4
+  memory { 32.GB * task.attempt }
   time { 2.d }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
