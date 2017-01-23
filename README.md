@@ -1,2 +1,1 @@
-# preprocessing
 # align-genomes
