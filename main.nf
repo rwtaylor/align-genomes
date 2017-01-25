@@ -10,32 +10,19 @@
   $ nextflow run align_genomes.nf -c <nextflow.config>
 */
 
-/*process TestPipeline {
-  publishDir "outputs/tests"
 
-   queue 'dpetrov,normal,hns,owners'
-  cpus 2
-  memory { 4.GB * task.cpus }
-  time { 2.d }
-  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
-  maxRetries 5
-  maxErrors '-1'
-
-  input:
-  file fasta1 from genome1
-  file fasta2 from genome2
-
-  output:
-  file "sample1.fasta" into testgenome1
-  file "sample2.fasta" into testgenome2
-
-  """
-  parallel -j${task.cpus} --link 'zcat {1} | seqkit sample -n 1000 -o {2}' ::: ${fasta1} ${fasta2} ::: sample1.fasta sample2.fasta
-  """
+queries = file(params.query)
+query_fasta = Channel
+  .from(queries.readLines())
+  .map {line ->
+    lsplit      = line.split()
+    queryID     = lsplit[0]
+    fastaFile   = file(lsplit[1])
+    [ queryID, fastaFile ]
 }
-*/
+query_fasta.into{qf_view; query_fasta}
+qf_view.view()
 
-Channel.fromPath(params.query_fastas).set{query_fastas}
 Channel.fromPath(params.ref_genome).set{ref_genome}
 ref_genome.into{ref_genome; ref_genome2}
 
@@ -45,7 +32,7 @@ process LastDB {
   cpus 16
   memory { 4.GB * task.cpus }
   time { 2.d }
-  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
+  errorStrategy 'retry'
   maxRetries 5
   maxErrors '-1'
 
@@ -57,7 +44,6 @@ process LastDB {
 
   """
   zcat ${fasta} | lastdb -v -P${task.cpus} ${params.lastdb_options} refdb 
-
   """
 }
 
@@ -84,7 +70,33 @@ process LastDB {
 }
 */
 
-Channel.fromPath(params.query_fastas).splitFasta( by: 4, file: true).set{split_query}
+process ShuffleFasta {
+  publishDir "outputs/stages/shuffled"
+
+   queue 'dpetrov,normal,hns,owners'
+  cpus 2
+  memory { 4.GB * task.cpus }
+  time { 2.d }
+  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
+  maxRetries 5
+  maxErrors '-1'
+
+  input:
+  set qID, file(fasta) from query_fasta
+
+  output:
+  set qID, file("*.shuf.fasta") into shuffled_query
+
+  """
+  seqkit shuffle ${fasta} > ${qID}.shuf.fasta
+  """
+}
+
+shuffled_query.splitFasta( by: 100, file: true, elem: 1).set{split_query}
+
+split_query.into{split_query_view; split_query}
+
+split_query_view.view()
 
 process LastAlign {
   publishDir "outputs/stages/alignments"
@@ -92,23 +104,25 @@ process LastAlign {
   cpus 4
   memory { 32.GB * task.attempt }
   time { 2.d }
-  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
-  maxRetries 5
+  errorStrategy 'retry'
+  maxRetries 4
   maxErrors '-1'
  
   input:
-  file fasta_i from split_query
+  set qID, file(fasta_i) from split_query
   file db_files from database_files.first()
  
   output:
-  file "${fasta_i}.maf" into align_mafs
+  set qID, file("*.maf") into aligned_mafs
  
   """
   lastal -v -P${task.cpus} ${params.lastal_options} refdb ${fasta_i} | last-split -v -m1 > ${fasta_i}.maf
   """
 }
 
-align_mafs = align_mafs.toList()
+aligned_mafs.groupTuple().into{aligned_mafs_view; aligned_mafs}
+
+aligned_mafs_view.view()
 
 process MergeMAF {
   publishDir "outputs", mode: 'copy'
@@ -121,16 +135,16 @@ process MergeMAF {
   maxErrors '-1'
 
   input:
-  file mafs from align_mafs
+  set qID, file(mafs) from aligned_mafs
 
   output:
-  file "${params.output_prefix}.maf" into aligned_maf
+  set qID, file("*.maf") into aligned_maf
 
   script:
   input_mafs = mafs.collect{"$it"}.join(' ')
 
   """
-  cat ${input_mafs} > ${params.output_prefix}.maf
+  cat ${input_mafs} > ${qID}.maf
   """
 }
 
@@ -147,13 +161,13 @@ process MakeSam {
   maxErrors '-1'
 
   input:
-  file maf_file from to_sam
+  set qID, file(maf_file) from to_sam
 
   output:
-  file "${params.output_prefix}.sam" into aligned_sam
+  set qID, file("*.sam") into aligned_sam
 
   """
-  maf-convert -n sam ${maf_file} > ${params.output_prefix}.sam
+  maf-convert -n sam ${maf_file} > ${qID}.sam
   """
 }
 
@@ -168,14 +182,14 @@ process ConvertSamToBam {
   maxErrors '-1'
 
   input:
-  file sam_file from aligned_sam
+  set qID, file(sam_file) from aligned_sam
   file ref_file from ref_genome2
 
   output:
-  file "${params.output_prefix}.sam" into aligned_bam
+  set qID, file("*.bam") into aligned_bam
 
   """
-  samtools view -bT ${ref_file} ${sam_file} > ${params.output_prefix}.sam
+  samtools view -bT ${ref_file} ${sam_file} > ${qID}.bam
   """
 }
 
@@ -190,13 +204,13 @@ process SortBam {
   maxErrors '-1'
 
   input:
-  file bam_file from aligned_bam
+  set qID, file(bam_file) from aligned_bam
 
   output:
-  file "${params.output_prefix}.sam" into sorted_sam
+  set qID, file("*.sorted.bam") into sorted_sam
 
   """
-  samtools sort -T samtools_tmp ${bam_file} > ${params.output_prefix}.sorted.bam
+  samtools sort -T samtools_tmp ${bam_file} > ${qID}.sorted.bam
   """
 }
 
@@ -211,13 +225,13 @@ process MakeBlasttab {
   maxErrors '-1'
 
   input:
-  file maf_file from to_blasttab
+  set qID, file(maf_file) from to_blasttab
 
   output:
-  file "${params.output_prefix}.blasttab" into aligned_blasttab
+  set qID, file("*.blasttab") into aligned_blasttab
 
   """
-  maf-convert -n blasttab ${maf_file} > ${params.output_prefix}.blasttab
+  maf-convert -n blasttab ${maf_file} > ${qID}.blasttab
   """
 }
 
@@ -232,20 +246,12 @@ process MakeTab {
   maxErrors '-1'
 
   input:
-  file maf_file from to_tab
+  set qID, file(maf_file) from to_tab
 
   output:
-  file "${params.output_prefix}.tab" into aligned_tab
+  set qID, file("*.tab") into aligned_tab
 
   """
-  maf-convert -n tab ${maf_file} > ${params.output_prefix}.tab
+  maf-convert -n tab ${maf_file} > ${qID}.tab
   """
 }
-
-
-
-
-
-
-
-
