@@ -29,8 +29,8 @@ ref_genome.into{ref_genome; ref_genome2}
 process LastDB {
   publishDir "outputs/stages/lastdb"
 
-  cpus 16
-  memory { 64.GB }
+  cpus 12
+  memory { 48.GB }
   time { 6.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
