@@ -32,7 +32,7 @@ process LastDB {
   cpus 16
   memory { 4.GB * task.cpus }
   time { 2.d }
-  errorStrategy 'retry'
+  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
 
@@ -43,7 +43,7 @@ process LastDB {
   file 'refdb*' into database_files
 
   """
-  zcat ${fasta} | lastdb -v -P${task.cpus} ${params.lastdb_options} refdb 
+  /bin/zcat ${fasta} | /usr/local/bin/lastdb -v -P${task.cpus} ${params.lastdb_options} refdb 
   """
 }
 
@@ -65,7 +65,7 @@ process LastDB {
   file 'genome1.par' into database_params
 
   """
-  last-train -P${task.cpus} ldb ${fasta1} > genome1.par
+  /usr/local/bin/last-train -P${task.cpus} ldb ${fasta1} > genome1.par
   """
 }
 */
@@ -88,7 +88,7 @@ process ShuffleFasta {
   set qID, file("*.shuf.fasta") into shuffled_query
 
   """
-  seqkit shuffle ${fasta} > ${qID}.shuf.fasta
+  /usr/local/bin/seqkit shuffle ${fasta} > ${qID}.shuf.fasta
   """
 }
 
@@ -104,7 +104,7 @@ process LastAlign {
   cpus 4
   memory { 32.GB * task.attempt }
   time { 2.d }
-  errorStrategy 'retry'
+  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 4
   maxErrors '-1'
  
@@ -116,7 +116,7 @@ process LastAlign {
   set qID, file("*.maf") into aligned_mafs
  
   """
-  lastal -v -P${task.cpus} ${params.lastal_options} refdb ${fasta_i} | last-split -v -m1 > ${fasta_i}.maf
+  /usr/local/bin/lastal -v -P${task.cpus} ${params.lastal_options} refdb ${fasta_i} | /usr/local/bin/last-split -v -m1 > ${fasta_i}.maf
   """
 }
 
@@ -144,7 +144,7 @@ process MergeMAF {
   input_mafs = mafs.collect{"$it"}.join(' ')
 
   """
-  cat ${input_mafs} > ${qID}.maf
+  /bin/cat ${input_mafs} > ${qID}.maf
   """
 }
 
@@ -167,7 +167,7 @@ process MakeSam {
   set qID, file("*.sam") into aligned_sam
 
   """
-  maf-convert -n sam ${maf_file} > ${qID}.sam
+  /usr/local/bin/maf-convert -n sam ${maf_file} > ${qID}.sam
   """
 }
 
@@ -189,7 +189,7 @@ process ConvertSamToBam {
   set qID, file("*.bam") into aligned_bam
 
   """
-  samtools view -bT ${ref_file} ${sam_file} > ${qID}.bam
+  /usr/local/bin/samtools view -bT ${ref_file} ${sam_file} > ${qID}.bam
   """
 }
 
@@ -210,7 +210,7 @@ process SortBam {
   set qID, file("*.sorted.bam") into sorted_sam
 
   """
-  samtools sort -T samtools_tmp ${bam_file} > ${qID}.sorted.bam
+  /usr/local/bin/samtools sort -T samtools_tmp ${bam_file} > ${qID}.sorted.bam
   """
 }
 
@@ -231,7 +231,7 @@ process MakeBlasttab {
   set qID, file("*.blasttab") into aligned_blasttab
 
   """
-  maf-convert -n blasttab ${maf_file} > ${qID}.blasttab
+  /usr/local/bin/maf-convert -n blasttab ${maf_file} > ${qID}.blasttab
   """
 }
 
@@ -252,6 +252,6 @@ process MakeTab {
   set qID, file("*.tab") into aligned_tab
 
   """
-  maf-convert -n tab ${maf_file} > ${qID}.tab
+  /usr/local/bin/maf-convert -n tab ${maf_file} > ${qID}.tab
   """
 }
