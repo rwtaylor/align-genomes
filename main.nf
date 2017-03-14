@@ -30,8 +30,8 @@ process LastDB {
   publishDir "outputs/stages/lastdb"
 
   cpus 16
-  memory { 4.GB * task.cpus }
-  time { 2.d }
+  memory { 64.GB }
+  time { 6.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
@@ -74,9 +74,9 @@ process ShuffleFasta {
   publishDir "outputs/stages/shuffled"
 
    queue 'dpetrov,normal,hns,owners'
-  cpus 2
-  memory { 4.GB * task.cpus }
-  time { 2.d }
+  cpus 1
+  memory { 4.GB }
+  time { 2.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
@@ -102,8 +102,8 @@ process LastAlign {
   publishDir "outputs/stages/alignments"
 
   cpus 4
-  memory { 32.GB * task.attempt }
-  time { 2.d }
+  memory { task.attempt == 1 ? 32.GB: 64.GB }
+  time { task.attempt == 1 ? 1.d: 2.d }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 4
   maxErrors '-1'
@@ -128,8 +128,8 @@ process MergeMAF {
   publishDir "outputs", mode: 'copy'
 
   cpus 1
-  memory { 32.GB * task.cpus }
-  time { 2.d * task.attempt }
+  memory { 4.GB }
+  time { 1.h}
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
@@ -154,8 +154,8 @@ process MakeSam {
   publishDir "outputs", mode: 'copy'
 
   cpus 1
-  memory { 32.GB * task.cpus }
-  time { 2.d * task.attempt }
+  memory { 4.GB }
+  time { 2.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
@@ -167,7 +167,9 @@ process MakeSam {
   set qID, file("*.sam") into aligned_sam
 
   """
-  /usr/local/bin/maf-convert -n sam ${maf_file} > ${qID}.sam
+  /usr/local/bin/maf-convert -n sam ${maf_file} > temp.sam
+  samtools faidx ${ref_file}
+  samtools view t ${ref_file}.fai ${qID}.sam > temp.sam
   """
 }
 
@@ -175,8 +177,8 @@ process ConvertSamToBam {
   publishDir "outputs", mode: 'copy'
 
   cpus 1
-  memory { 32.GB * task.cpus }
-  time { 2.d * task.attempt }
+  memory { 4.GB }
+  time { 2.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
@@ -197,8 +199,8 @@ process SortBam {
   publishDir "outputs", mode: 'copy'
 
   cpus 1
-  memory { 32.GB * task.cpus }
-  time { 2.d * task.attempt }
+  memory { 4.GB }
+  time { 2.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
@@ -218,8 +220,8 @@ process MakeBlasttab {
   publishDir "outputs", mode: 'copy'
 
   cpus 1
-  memory { 32.GB * task.cpus }
-  time { 2.d * task.attempt }
+  memory { 4.GB }
+  time { 2.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
@@ -239,8 +241,8 @@ process MakeTab {
   publishDir "outputs", mode: 'copy'
 
   cpus 1
-  memory { 32.GB * task.cpus }
-  time { 2.d * task.attempt }
+  memory { 4.GB }
+  time { 2.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
   maxErrors '-1'
