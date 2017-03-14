@@ -75,7 +75,7 @@ process ShuffleFasta {
 
    queue 'dpetrov,normal,hns,owners'
   cpus 1
-  memory { 4.GB }
+  memory { 8.GB }
   time { 2.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
