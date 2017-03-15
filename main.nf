@@ -27,6 +27,7 @@ Channel.fromPath(params.ref_genome).set{ref_genome}
 ref_genome.into{ref_genome; ref_genome2}
 
 process LastDB {
+  tag params.tag
   publishDir "outputs/stages/lastdb"
 
   cpus 12
@@ -71,6 +72,7 @@ process LastDB {
 */
 
 process ShuffleFasta {
+  tag params.tag
   publishDir "outputs/stages/shuffled"
 
    queue 'dpetrov,normal,hns,owners'
@@ -99,6 +101,7 @@ split_query.into{split_query_view; split_query}
 split_query_view.view()
 
 process LastAlign {
+  tag params.tag
   publishDir "outputs/stages/alignments"
 
   cpus 4
@@ -125,6 +128,7 @@ aligned_mafs.groupTuple().into{aligned_mafs_view; aligned_mafs}
 aligned_mafs_view.view()
 
 process MergeMAF {
+  tag params.tag
   publishDir "outputs", mode: 'copy'
 
   cpus 1
@@ -151,6 +155,7 @@ process MergeMAF {
 aligned_maf.into{to_sam; to_blasttab; to_tab}
 
 process MakeSam {
+  tag params.tag
   publishDir "outputs", mode: 'copy'
 
   cpus 1
@@ -174,6 +179,7 @@ process MakeSam {
 }
 
 process ConvertSamToBam {
+  tag params.tag
   publishDir "outputs", mode: 'copy'
 
   cpus 1
@@ -196,6 +202,7 @@ process ConvertSamToBam {
 }
 
 process SortBam {
+  tag params.tag
   publishDir "outputs", mode: 'copy'
 
   cpus 1
@@ -217,6 +224,7 @@ process SortBam {
 }
 
 process MakeBlasttab {
+  tag params.tag
   publishDir "outputs", mode: 'copy'
 
   cpus 1
@@ -238,6 +246,7 @@ process MakeBlasttab {
 }
 
 process MakeTab {
+  tag params.tag
   publishDir "outputs", mode: 'copy'
 
   cpus 1
