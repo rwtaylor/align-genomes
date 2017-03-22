@@ -23,15 +23,44 @@ query_fasta = Channel
 query_fasta.into{qf_view; query_fasta}
 qf_view.view()
 
-Channel.fromPath(params.ref_genome).set{ref_genome}
-ref_genome.into{ref_genome; ref_genome2}
+ref_genome = Channel.fromPath(params.ref_genome).map{ file -> [file.baseName, file] }
 
-process LastDB {
+process FilterRef {
   tag params.tag
   publishDir "outputs/stages/lastdb"
 
   cpus 12
   memory { 48.GB }
+  time { 6.h }
+  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
+  maxRetries 5
+  maxErrors '-1'
+
+  input:
+  file prefix, fasta from ref_genome
+
+  output:
+  file '*.fasta' into filtered_fasta
+
+  when: 
+
+  """
+  /bin/zcat $fasta | seqkit seq -m $params.minseqlen > ${prefix}.filtered.fasta 
+  """
+}
+
+if(params.minseqlen > 0){
+  filtered_fasta.into { ref_genome; ref_genome2}
+  } else {
+  ref_genome.into{ ref_genome; ref_genome2 }
+  }
+
+process LastDB {
+  tag params.tag
+  publishDir "outputs/stages/lastdb"
+
+  cpus 8
+  memory { 32.GB }
   time { 6.h }
   errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
   maxRetries 5
@@ -94,7 +123,7 @@ process ShuffleFasta {
   """
 }
 
-shuffled_query.splitFasta( by: 100, file: true, elem: 1).set{split_query}
+shuffled_query.splitFasta( by: 1, file: true, elem: 1).set{split_query}
 
 split_query.into{split_query_view; split_query}
 
@@ -154,7 +183,7 @@ process MergeMAF {
 
 aligned_maf.into{to_sam; to_blasttab; to_tab}
 
-process MakeSam {
+process MakeSamBam {
   tag params.tag
   publishDir "outputs", mode: 'copy'
 
@@ -167,59 +196,19 @@ process MakeSam {
 
   input:
   set qID, file(maf_file) from to_sam
-
+  file ref_fasta from ref_genome2
   output:
-  set qID, file("*.sam") into aligned_sam
+  set qID, file("${qID}.sam"), file("${qID}.bam"), file("${qID}.bam.bai") into aligned_sam_bam
 
   """
+  set -e
   /usr/local/bin/maf-convert -n sam ${maf_file} > temp.sam
-  samtools faidx ${ref_file}
-  samtools view t ${ref_file}.fai ${qID}.sam > temp.sam
-  """
-}
-
-process ConvertSamToBam {
-  tag params.tag
-  publishDir "outputs", mode: 'copy'
-
-  cpus 1
-  memory { 4.GB }
-  time { 2.h }
-  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
-  maxRetries 5
-  maxErrors '-1'
-
-  input:
-  set qID, file(sam_file) from aligned_sam
-  file ref_file from ref_genome2
-
-  output:
-  set qID, file("*.bam") into aligned_bam
-
-  """
-  /usr/local/bin/samtools view -bT ${ref_file} ${sam_file} > ${qID}.bam
-  """
-}
-
-process SortBam {
-  tag params.tag
-  publishDir "outputs", mode: 'copy'
-
-  cpus 1
-  memory { 4.GB }
-  time { 2.h }
-  errorStrategy { task.exitStatus == 143 ? 'retry' : 'finish' }
-  maxRetries 5
-  maxErrors '-1'
-
-  input:
-  set qID, file(bam_file) from aligned_bam
-
-  output:
-  set qID, file("*.sorted.bam") into sorted_sam
-
-  """
-  /usr/local/bin/samtools sort -T samtools_tmp ${bam_file} > ${qID}.sorted.bam
+  /usr/local/bin/samtools faidx ${ref_fasta}
+  /usr/local/bin/samtools view -t ${ref_fasta}.fai temp.sam > ${qID}.sam
+  /usr/local/bin/samtools view -b -t ${ref_fasta}.fai -T ${ref_fasta} ${qID}.sam > temp.bam
+  /usr/local/bin/samtools sort temp.bam > ${qID}.bam
+  /usr/local/bin/samtools index ${qID}.bam
+  rm temp.sam temp.bam
   """
 }
 
